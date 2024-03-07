@@ -1,23 +1,35 @@
 from dash import Dash, html, dcc, callback, Input, Output
 import dash_cytoscape as cyto
 from brain import Brain, HeavesideNeuron
+from random import random
+from math import floor
+from copy import deepcopy
+from typing import List
+import plotly.express as px
 
 
 def func(x):
+    return False
     val = (x-1)**3 + (x-1)**2
-    return val == 0
+    return val < 0.04
 
-brains = [
- Brain()
-   .add_neuron(HeavesideNeuron(default_weight=i/10)).add_neuron(HeavesideNeuron(default_weight=i/10))
-   .next_layer().add_neuron(HeavesideNeuron(default_weight=i/10)).add_neuron(HeavesideNeuron(default_weight=i/10)).add_neuron(HeavesideNeuron(default_weight=i/10)).add_neuron(HeavesideNeuron(default_weight=i/10))
-   .next_layer().add_neuron(HeavesideNeuron(default_weight=i/10))
- for i in range(1, 10)
+brain = (
+    Brain()
+    .add_neuron(HeavesideNeuron())
+    .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
+    .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
+    .next_layer().add_neuron(HeavesideNeuron())
+)
+vals = [random() for _ in range(0, 1000)]
+dataset = [
+    ([x], func(x),)
+    for x in vals
 ]
 
-for b in brains:
-    b.propagate([1,0])
-
+brains: List[Brain] = []
+for _ in range(100):
+    brain.train(dataset, alpha=0.001)
+    brains.append(deepcopy(brain))
 
 def init_app():
     app = Dash(__name__)
@@ -40,6 +52,12 @@ def init_app():
                         'label':'data(label)',
                     }
                 },
+                {
+                    'selector': f'[weight >= 1]',
+                    'style':{
+                        'opacity': 1,
+                    }
+                }
             ] + [
                 {
                     'selector': f'[weight <= {i/10}]',
@@ -47,7 +65,7 @@ def init_app():
                         'opacity': i/10,
                     }
                 }
-                for i in range(10, 1, -1)
+                for i in range(10, 0, -1)
             ],
             # layout={
             #     # 'name': 'cose',
@@ -69,10 +87,13 @@ def init_app():
             # },
             responsive=True,
         ),
-        dcc.Slider(0, len(brains) - 1, 1,
+        dcc.Slider(0, len(brains) - 1, floor(len(brains)/50),
                value=4,
                id='itr-slider'
         ),
+        dcc.Graph(id='model-error'),
+        dcc.Graph(id='dataset'),
+        dcc.Graph(id='inference'),
     ])
     app.run(debug=True)
 
@@ -96,3 +117,37 @@ def update_output(value):
         for prev_nrn_num, prev_nrn in enumerate(brain.layers[lyr_num-1].neurons)
     ]
     return nodes + edges
+
+
+@callback(
+    Output('model-error', 'figure'),
+    Input('itr-slider', 'value'),
+)
+def update_error(value):
+    brain: Brain = brains[value]
+    return px.scatter(
+        x=[p[0][0] for p in dataset],
+        y=[p[1] - brain.propagate(p[0])[0] for p in dataset],
+    )
+
+
+@callback(
+    Output('dataset', 'figure'),
+    Input('itr-slider', 'value'),
+)
+def update_error(value):
+    return px.scatter(
+        x=[p[0][0] for p in dataset],
+        y=[p[1] for p in dataset],
+    )
+
+@callback(
+    Output('inference', 'figure'),
+    Input('itr-slider', 'value'),
+)
+def update_error(value):
+    brain: Brain = brains[value]
+    return px.scatter(
+        x=[p[0][0] for p in dataset],
+        y=[brain.propagate(p[0])[0] for p in dataset],
+    )

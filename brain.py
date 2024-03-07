@@ -1,4 +1,6 @@
 from typing import List, Any, Tuple
+from random import randrange
+from abc import abstractmethod
 
 
 class InvalidPropagationInputException(Exception):
@@ -6,10 +8,12 @@ class InvalidPropagationInputException(Exception):
 
 
 class Neuron:
+    @abstractmethod
     def activate(self, inputs: List[float]) -> float:
-        raise NotImplementedError("Neuron `activate` function has not been implemented!")
+        ...
     
-    def update_weights(self, error: float, prev_lyr: List[float], alpha=0.0001):
+    @abstractmethod
+    def update_weights(self, error: float, alpha=0.0001):
         ...
     
 
@@ -31,9 +35,8 @@ class HeavesideNeuron(Neuron):
         else:
             return 0
     
-    def update_weights(self, error: float, prev_lyr: List[float], alpha=0.0001):
-        for i, weight in enumerate(self.weights):
-            self.weights[i] = self.weights - (error * weight * prev_lyr[i] * alpha)
+    def update_weights(self, error: float, alpha=0.01):
+        self.weights = [w + error*alpha for w in self.weights]
 
 
 class NeuronLayer:
@@ -70,16 +73,28 @@ class Brain:
             output = layer.activate(output)
         return output
     
-    def train(self, data: List[Tuple[List, bool]]):
+    def derivative(self, layer: int, neuron: int) -> str:
+        if layer + 1 >= len(self.layers):
+            return 1
+        retval = 0
+        for nrn_num, nrn in enumerate(self.layers[layer+1].neurons):
+            if layer + 2 >= len(self.layers):
+                retval += nrn.weights[neuron]
+            else:
+                retval += nrn.weights[neuron] * self.derivative(layer+1, nrn_num)
+        return retval
+    
+    def train(self, data: List[Tuple[List, bool]], alpha: float = 0.01):
+        # snapshots = []
         for input, expected in data:
-            layer_outputs = []
-            for i, layer in enumerate[self.layers]:
-                layer_outputs[i] = layer.activate(input if i == 0 else layer_outputs[i-1])
             actual = self.propagate(input)
-            error = actual-expected
-            for lyr_num, layer in reversed(list(enumerate(self.layers))):
-                if lyr_num == 0:
-                    continue
-                for nrn in layer.neurons:
-                    nrn.update_weights(error, layer_outputs[lyr_num-1])
-                
+            error = actual[0]-expected
+            
+            # pick a random nrn to update
+            lyr_num = randrange(0, len(self.layers))
+            nrn_num = randrange(0, len(self.layers[lyr_num].neurons))
+            error = error*self.derivative(lyr_num, nrn_num)
+            nrn = self.layers[lyr_num].neurons[nrn_num]
+            nrn.update_weights(error, alpha)
+        #     snapshots.append(deepcopy(self))
+        # return snapshots
