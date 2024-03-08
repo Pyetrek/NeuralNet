@@ -36,7 +36,7 @@ class HeavesideNeuron(Neuron):
             return 0
     
     def update_weights(self, error: float, alpha=0.01):
-        self.weights = [w + error*alpha for w in self.weights]
+        self.weights = [w - error*alpha for w in self.weights]
 
 
 class NeuronLayer:
@@ -88,11 +88,12 @@ class Brain:
         # snapshots = []
         for input, expected in data:
             actual = self.propagate(input)
-            error = actual[0]-expected
+            error = actual[0] - expected
             
             # pick a random nrn to update
             lyr_num = randrange(0, len(self.layers))
             nrn_num = randrange(0, len(self.layers[lyr_num].neurons))
+            # print("actual", actual, "expected", expected, "error", error, "derivative", self.derivative(lyr_num, nrn_num))
             error = error*self.derivative(lyr_num, nrn_num)
             nrn = self.layers[lyr_num].neurons[nrn_num]
             nrn.update_weights(error, alpha)
