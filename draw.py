@@ -2,14 +2,16 @@ from dash import Dash, html, dcc, callback, Input, Output
 import dash_cytoscape as cyto
 from brain import Brain, HeavesideNeuron
 from random import random
-from math import floor
+from math import ceil
 from copy import deepcopy
 from typing import List
 import plotly.express as px
+import plotly.graph_objs as go
+import pandas as pd
 
 
 def func(x):
-    return False
+    # return False
     val = (x-1)**3 + (x-1)**2
     return val < 0.04
 
@@ -20,81 +22,85 @@ brain = (
     .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
     .next_layer().add_neuron(HeavesideNeuron())
 )
-vals = [random() for _ in range(0, 1000)]
+vals = [random() for _ in range(0, 100)]
 dataset = [
     ([x], func(x),)
     for x in vals
 ]
 
 brains: List[Brain] = []
-for _ in range(100):
-    brain.train(dataset, alpha=0.001)
+for _ in range(1000):
+    brain.train(dataset, alpha=0.01)
     brains.append(deepcopy(brain))
+
+def network_graph(id, style):
+    return cyto.Cytoscape(
+        id=id,
+        layout={'name': 'preset'},
+        style=style,
+        stylesheet=[
+            {
+                'selector':'edge[label]',
+                'style':{
+                    'label':'data(label)',
+                }
+            },
+            {
+                'selector':'node[label]',
+                'style':{
+                    'label':'data(label)',
+                }
+            },
+            {
+                'selector': f'[weight >= 1]',
+                'style':{
+                    'opacity': 1,
+                }
+            }
+        ] + [
+            {
+                'selector': f'[weight <= {i/10}]',
+                'style':{
+                    'opacity': i/10,
+                }
+            }
+            for i in range(10, 0, -1)
+        ],
+        # layout={
+        #     # 'name': 'cose',
+        #     'idealEdgeLength': 100,
+        #     'nodeOverlap': 20,
+        #     'refresh': 20,
+        #     # 'fit': True,
+        #     'padding': 30,
+        #     'randomize': False,
+        #     'componentSpacing': 100,
+        #     'nodeRepulsion': 400000,
+        #     'edgeElasticity': 100,
+        #     'nestingFactor': 5,
+        #     'gravity': 80,
+        #     'numIter': 1000,
+        #     'initialTemp': 200,
+        #     'coolingFactor': 0.95,
+        #     'minTemp': 1.0
+        # },
+        responsive=True,
+    )
 
 def init_app():
     app = Dash(__name__)
-
     app.layout = html.Div([
-        cyto.Cytoscape(
-            id='nrn-network',
-            layout={'name': 'preset'},
-            style={'width': '100%', 'height': '800px'},
-            stylesheet=[
-                {
-                    'selector':'edge[label]',
-                    'style':{
-                        'label':'data(label)',
-                    }
-                },
-                {
-                    'selector':'node[label]',
-                    'style':{
-                        'label':'data(label)',
-                    }
-                },
-                {
-                    'selector': f'[weight >= 1]',
-                    'style':{
-                        'opacity': 1,
-                    }
-                }
-            ] + [
-                {
-                    'selector': f'[weight <= {i/10}]',
-                    'style':{
-                        'opacity': i/10,
-                    }
-                }
-                for i in range(10, 0, -1)
-            ],
-            # layout={
-            #     # 'name': 'cose',
-            #     'idealEdgeLength': 100,
-            #     'nodeOverlap': 20,
-            #     'refresh': 20,
-            #     # 'fit': True,
-            #     'padding': 30,
-            #     'randomize': False,
-            #     'componentSpacing': 100,
-            #     'nodeRepulsion': 400000,
-            #     'edgeElasticity': 100,
-            #     'nestingFactor': 5,
-            #     'gravity': 80,
-            #     'numIter': 1000,
-            #     'initialTemp': 200,
-            #     'coolingFactor': 0.95,
-            #     'minTemp': 1.0
-            # },
-            responsive=True,
-        ),
-        dcc.Slider(0, len(brains) - 1, floor(len(brains)/50),
-               value=4,
-               id='itr-slider'
-        ),
-        dcc.Graph(id='model-error'),
-        dcc.Graph(id='dataset'),
-        dcc.Graph(id='inference'),
-    ])
+        html.Div([
+            network_graph(id='nrn-network', style={'height': '800px', 'flex': 1}),
+            html.Div([
+                dcc.Graph(id='model-error', style={'flex': 1}),
+                dcc.Graph(id='dataset', style={'flex': 1}),
+            ], style={'display': 'flex', 'flexDirection': 'column', 'flex': 1}),
+        ], style={"width": "100%", 'display': 'flex', 'flexDirection': 'row', 'flex': 1}),
+        html.Div([
+            dcc.Slider(0, len(brains) - 1, ceil(len(brains)/50), value=4, id='itr-slider'),
+        ], style={"width": "100%", 'flex': 1}),
+    ], style={'display': 'flex', 'flexDirection': 'column', "align-items": "flex-end"})
     app.run(debug=True)
 
 
@@ -127,7 +133,8 @@ def update_error(value):
     brain: Brain = brains[value]
     return px.scatter(
         x=[p[0][0] for p in dataset],
-        y=[p[1] - brain.propagate(p[0])[0] for p in dataset],
+        y=[brain.propagate(p[0])[0] - p[1] for p in dataset],
+        title="Model Error",
     )
 
 
@@ -136,18 +143,10 @@ def update_error(value):
     Input('itr-slider', 'value'),
 )
 def update_error(value):
-    return px.scatter(
-        x=[p[0][0] for p in dataset],
-        y=[p[1] for p in dataset],
-    )
-
-@callback(
-    Output('inference', 'figure'),
-    Input('itr-slider', 'value'),
-)
-def update_error(value):
     brain: Brain = brains[value]
-    return px.scatter(
-        x=[p[0][0] for p in dataset],
-        y=[brain.propagate(p[0])[0] for p in dataset],
-    )
+    data = pd.DataFrame({
+        "x": [p[0][0] for p in dataset] * 2,
+        "y": [float(p[1]) for p in dataset] + [float(brain.propagate(p[0])[0]) for p in dataset],
+        "type": ["actual"]*len(dataset) + ["predicted"]*len(dataset),
+    })
+    return px.scatter(data, x="x", y="y", color="type")
