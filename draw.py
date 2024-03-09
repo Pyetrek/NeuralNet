@@ -12,8 +12,9 @@ import pandas as pd
 
 def func(x):
     # return False
+    return x < 0.5
     val = (x-1)**3 + (x-1)**2
-    return val < 0.04
+    return val >= 0.04
 
 brain = (
     Brain()
@@ -22,6 +23,11 @@ brain = (
     .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
     .next_layer().add_neuron(HeavesideNeuron())
 )
+# brain = (
+#     Brain()
+#     .add_neuron(HeavesideNeuron())
+#     .next_layer().add_neuron(HeavesideNeuron())
+# )
 vals = [random() for _ in range(0, 100)]
 dataset = [
     ([x], func(x),)
@@ -65,6 +71,13 @@ def network_graph(id, style):
                 }
             }
             for i in range(10, 0, -1)
+        ] + [
+            {
+                'selector': f'[weight < 0.001]',
+                'style':{
+                    'opacity': 0,
+                }
+            }
         ],
         # layout={
         #     # 'name': 'cose',
@@ -107,9 +120,11 @@ def init_app():
 @callback(
     Output('nrn-network', 'elements'),
     Input('itr-slider', 'value'),
+    Input('nrn-network', 'tapNodeData'),
 )
-def update_output(value):
+def update_output(value, tap_node_data):
     brain = brains[value]
+    selected_node = tap_node_data.get('id', "") if tap_node_data else ""
     max_lyr_cnt = max([lyr.size() for lyr in brain.layers])
     nodes = [
         {"data": {"id": f"{lyr_num}-{nrn_num}", "label": f"{lyr_num}-{nrn_num}"}, "position": {"x": 100*lyr_num, "y": 100*((max_lyr_cnt-lyr.size())/2+nrn_num) + 1}}
@@ -117,7 +132,11 @@ def update_output(value):
         for nrn_num, nrn in enumerate(lyr.neurons)
     ]
     edges = [
-        {"data": {"source":  f"{lyr_num-1}-{prev_nrn_num}", "target":  f"{lyr_num}-{nrn_num}", "label": f"W: {nrn.weights[prev_nrn_num]}", "weight": nrn.weights[prev_nrn_num]}}
+        (
+            {"data": {"source":  f"{lyr_num-1}-{prev_nrn_num}", "target":  f"{lyr_num}-{nrn_num}", "label": f"W: {nrn.weights[prev_nrn_num]:3.3f}", "weight": nrn.weights[prev_nrn_num]}}
+            if f"{lyr_num}-{nrn_num}" == selected_node else
+            {"data": {"source":  f"{lyr_num-1}-{prev_nrn_num}", "target":  f"{lyr_num}-{nrn_num}", "weight": nrn.weights[prev_nrn_num]}}
+        )
         for lyr_num, lyr in enumerate(brain.layers) if lyr_num > 0
         for nrn_num, nrn in enumerate(lyr.neurons)
         for prev_nrn_num, prev_nrn in enumerate(brain.layers[lyr_num-1].neurons)

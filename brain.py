@@ -1,6 +1,7 @@
 from typing import List, Any, Tuple
 from random import randrange
 from abc import abstractmethod
+from numpy.random import permutation
 
 
 class InvalidPropagationInputException(Exception):
@@ -36,7 +37,8 @@ class HeavesideNeuron(Neuron):
             return 0
     
     def update_weights(self, error: float, alpha=0.01):
-        self.weights = [w - error*alpha for w in self.weights]
+        w_num = randrange(0, len(self.weights))
+        self.weights[w_num] = self.weights[w_num] - error*alpha
 
 
 class NeuronLayer:
@@ -86,7 +88,8 @@ class Brain:
     
     def train(self, data: List[Tuple[List, bool]], alpha: float = 0.01):
         # snapshots = []
-        for input, expected in data:
+        for i in permutation(len(data)):
+            input, expected = data[i]
             actual = self.propagate(input)
             error = actual[0] - expected
             
