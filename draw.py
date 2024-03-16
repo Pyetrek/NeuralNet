@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc, callback, Input, Output
+from dash import Dash, html, dcc, callback, Input, Output, State
 import dash_cytoscape as cyto
 from brain import Brain, HeavesideNeuron
 from random import random
@@ -10,7 +10,8 @@ import plotly.graph_objs as go
 import pandas as pd
 
 
-def func(x):
+def func(*x):
+    return x[0] ^ x[1]
     # return False
     return x < 0.5
     val = (x-1)**3 + (x-1)**2
@@ -18,7 +19,7 @@ def func(x):
 
 brain = (
     Brain()
-    .add_neuron(HeavesideNeuron())
+    .add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
     .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
     .next_layer().add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron()).add_neuron(HeavesideNeuron())
     .next_layer().add_neuron(HeavesideNeuron())
@@ -28,16 +29,21 @@ brain = (
 #     .add_neuron(HeavesideNeuron())
 #     .next_layer().add_neuron(HeavesideNeuron())
 # )
-vals = [random() for _ in range(0, 100)]
+# vals = [random() for _ in range(0, 100)]
+# dataset = [
+#     ([x], func(x),)
+#     for x in vals
+# ]
+
 dataset = [
-    ([x], func(x),)
-    for x in vals
+    ([0,0], 0),
+    ([0,1], 1),
+    ([1,0], 1),
+    ([1,1], 0),
 ]
 
 brains: List[Brain] = []
-for _ in range(1000):
-    brain.train(dataset, alpha=0.01)
-    brains.append(deepcopy(brain))
+brain_error: List[int] = []
 
 def network_graph(id, style):
     return cyto.Cytoscape(
@@ -104,10 +110,15 @@ def init_app():
     app = Dash(__name__)
     app.layout = html.Div([
         html.Div([
-            network_graph(id='nrn-network', style={'height': '800px', 'flex': 1}),
+            network_graph(id='nrn-network', style={'height': '800px', 'flex': 2}),
             html.Div([
                 dcc.Graph(id='model-error', style={'flex': 1}),
                 dcc.Graph(id='dataset', style={'flex': 1}),
+            ], style={'display': 'flex', 'flexDirection': 'column', 'flex': 2}),
+            html.Div([
+                dcc.Input(id="num-rounds"),
+                html.Button('Train', id='train', n_clicks=0),
+                html.Button('Reset', id='reset', n_clicks=0),
             ], style={'display': 'flex', 'flexDirection': 'column', 'flex': 1}),
         ], style={"width": "100%", 'display': 'flex', 'flexDirection': 'row', 'flex': 1}),
         html.Div([
@@ -150,9 +161,14 @@ def update_output(value, tap_node_data):
 )
 def update_error(value):
     brain: Brain = brains[value]
+    # return px.scatter(
+    #     x=["".join(str(v) for v in p[0]) for p in dataset],
+    #     y=[brain.propagate(p[0])[0] - p[1] for p in dataset],
+    #     title="Model Error",
+    # )
     return px.scatter(
-        x=[p[0][0] for p in dataset],
-        y=[brain.propagate(p[0])[0] - p[1] for p in dataset],
+        x=[i for i in range(len(brain_error))],
+        y=brain_error,
         title="Model Error",
     )
 
@@ -161,11 +177,45 @@ def update_error(value):
     Output('dataset', 'figure'),
     Input('itr-slider', 'value'),
 )
-def update_error(value):
+def update_dataset(value):
     brain: Brain = brains[value]
     data = pd.DataFrame({
-        "x": [p[0][0] for p in dataset] * 2,
+        "x": ["".join(str(v) for v in p[0]) for p in dataset] * 2,
         "y": [float(p[1]) for p in dataset] + [float(brain.propagate(p[0])[0]) for p in dataset],
         "type": ["actual"]*len(dataset) + ["predicted"]*len(dataset),
     })
     return px.scatter(data, x="x", y="y", color="type")
+
+
+@callback(
+    Output('itr-slider', 'value'),
+    Input('train', 'n_clicks'),
+    State('num-rounds', 'value'),
+    prevent_initial_call=True,
+)
+def retrain(_, num_rounds):
+    global brains
+    for _ in range(int(num_rounds)):
+        brain.train(dataset, alpha=0.01)
+        brains.append(deepcopy(brain))
+        brain_error.append(brain.error(dataset))
+        brains.pop(0)
+    return 0
+
+
+@callback(
+    Output('itr-slider', 'max'),
+    Input('reset', 'n_clicks'),
+    State('num-rounds', 'value'),
+    prevent_initial_call=True,
+)
+def reset(_, num_rounds):
+    num_rounds = int(num_rounds)
+    global brains
+    brains.clear()
+    brain_error.clear()
+    for _ in range(num_rounds):
+        brain.train(dataset, alpha=0.01)
+        brains.append(deepcopy(brain))
+        brain_error.append(brain.error(dataset))
+    return num_rounds-1

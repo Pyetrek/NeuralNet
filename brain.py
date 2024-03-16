@@ -1,6 +1,6 @@
 from typing import List, Any, Tuple
 from random import randrange
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from numpy.random import permutation
 
 
@@ -8,13 +8,17 @@ class InvalidPropagationInputException(Exception):
     pass
 
 
-class Neuron:
+class Neuron(ABC):
     @abstractmethod
     def activate(self, inputs: List[float]) -> float:
         ...
     
     @abstractmethod
     def update_weights(self, error: float, alpha=0.0001):
+        ...
+    
+    @abstractmethod
+    def reset(self):
         ...
     
 
@@ -39,6 +43,9 @@ class HeavesideNeuron(Neuron):
     def update_weights(self, error: float, alpha=0.01):
         w_num = randrange(0, len(self.weights))
         self.weights[w_num] = self.weights[w_num] - error*alpha
+    
+    def reset(self):
+        self.weights = [0] * len(self.weights)
 
 
 class NeuronLayer:
@@ -53,6 +60,10 @@ class NeuronLayer:
 
     def activate(self, input: List[Any]) -> List[Any]:
         return [n.activate(input) for n in self.neurons]
+    
+    def reset(self):
+        for nrn in self.neurons:
+            nrn.reset()
 
 
 # To keep things simple, this brain will fully connect all neurons
@@ -102,3 +113,10 @@ class Brain:
             nrn.update_weights(error, alpha)
         #     snapshots.append(deepcopy(self))
         # return snapshots
+    
+    def reset(self):
+        for layer in self.layers:
+            layer.reset()
+    
+    def error(self, data: List[Tuple[List, bool]]) -> float:
+        return sum((expected - self.propagate(input)[0])**2 for input, expected in data)/len(data)
